@@ -1145,6 +1145,12 @@ void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
 	InstrumentClip* clip = activeClip ? (InstrumentClip*)activeClip : nullptr;
 	if (!clip || !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableTopoDrums)
 	    || !clip->topoDrumsSettings.enabled) {
+		static uint32_t topoDbgSkip = 0;
+		if ((topoDbgSkip++ & 0xFFF) == 0) {
+			D_PRINTLN("TOPO skip: activeClip=%p feature=%d enabled=%d", (void*)activeClip,
+			          (int32_t)runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableTopoDrums),
+			          clip ? (int32_t)clip->topoDrumsSettings.enabled : -1);
+		}
 		topoClip_ = nullptr;
 		topoLastPos_ = -1;
 		return;
@@ -1169,6 +1175,7 @@ void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
 		fromPulse = 0;
 	}
 	if (restart) {
+		D_PRINTLN("TOPO restart: pos=%ld loop=%ld", (long int)currentPos, (long int)loopLength);
 		topoEngine_.reset();
 		for (auto& off : topoGateOffPulse_) {
 			off = -1;
@@ -1197,6 +1204,16 @@ void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
 	}
 
 	int64_t const pulsesToAdvance = toPulse - fromPulse;
+
+	static uint32_t topoDbgTick = 0;
+	if ((topoDbgTick++ & 0xFFF) == 0) {
+		D_PRINTLN("TOPO tick: pos=%ld loop=%ld from=%lld to=%lld adv=%lld mode=%d gate=%d rows=%ld/%ld/%ld",
+		          (long int)currentPos, (long int)loopLength, (long long int)fromPulse, (long long int)toPulse,
+		          (long long int)pulsesToAdvance, (int32_t)topoSettings.mode, (int32_t)topoSettings.gateMode,
+		          (long int)topoSettings.bankRows[0], (long int)topoSettings.bankRows[1],
+		          (long int)topoSettings.bankRows[2]);
+	}
+
 	if (pulsesToAdvance <= 0) {
 		return;
 	}
@@ -1207,6 +1224,8 @@ void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
 		if (!event.fired(b)) {
 			continue;
 		}
+		D_PRINTLN("TOPO fire: bank=%ld row=%ld acc=%d", (long int)b, (long int)topoSettings.bankRows[b],
+		          event.accented(b) ? 1 : 0);
 		fireTopoBank(clip, timelineStack, topoSettings.bankRows[b], event.accented(b) ? 127 : 100);
 		int64_t gatePulses = topoSettings.gateMode ? (int64_t)kPulsesPerStep : 1;
 		topoGateOffPulse_[b] = toPulse + gatePulses;
@@ -1216,10 +1235,12 @@ void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
 void Kit::fireTopoBank(InstrumentClip* clip, ModelStackWithTimelineCounter* timelineStack, int32_t rowIndex,
                        uint8_t velocity) {
 	if (rowIndex < 0 || rowIndex >= clip->noteRows.getNumElements()) {
+		D_PRINTLN("TOPO fire bad row: %ld of %ld", (long int)rowIndex, (long int)clip->noteRows.getNumElements());
 		return;
 	}
 	NoteRow* row = clip->noteRows.getElement(rowIndex);
 	if (!row || !row->drum) {
+		D_PRINTLN("TOPO fire no drum: row=%ld", (long int)rowIndex);
 		return;
 	}
 	Drum* drum = row->drum;
