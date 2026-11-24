@@ -950,6 +950,22 @@ void tickSongFinalizeWindows(size_t& numSamples) {
 	// If a timer-tick is due during or directly after this window of audio samples...
 	if (playbackHandler.isEitherClockActive()) {
 
+		// Community Firmware: Topo Drums generative drum mode. Advance the engine here, on the audio thread,
+		// every block - unlike the swung-tick scheduler (which only fires when some output has scheduled an
+		// event, e.g. once a bar on a sparse song) or the clip's lastProcessedPos (which wraps at the loop
+		// point and would restart the pattern instead of advancing it). The engine anchors the absolute tick
+		// itself so the pattern stays in phase with each clip's launch.
+		if (currentSong) {
+			char topoModelStackMemory[MODEL_STACK_MAX_SIZE];
+			ModelStack* topoModelStack = setupModelStackWithSong(topoModelStackMemory, currentSong);
+			int64_t topoTick = playbackHandler.getActualSwungTickCount();
+			for (Output* topoOutput = currentSong->firstOutput; topoOutput; topoOutput = topoOutput->next) {
+				if (topoOutput->type == OutputType::KIT) {
+					((Kit*)topoOutput)->doTopoTick(topoModelStack, topoTick);
+				}
+			}
+		}
+
 startAgain:
 		int32_t nextTickType = 0;
 		uint32_t timeNextTick = audioSampleTimer + 9999;

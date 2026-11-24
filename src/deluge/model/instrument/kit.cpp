@@ -1139,7 +1139,7 @@ void Kit::deleteBackedUpParamManagers(Song* song) {
 // at 24 PPQN granularity) is mapped onto the clip's loop length, so the pattern always stays
 // aligned with the loop no matter its length. Any swing the Deluge transport applies is
 // inherited automatically, because clip positions advance in swung time.
-void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
+void Kit::doTopoTick(ModelStack* modelStack, int64_t currentPos) {
 	using namespace deluge::model::topo;
 
 	InstrumentClip* clip = activeClip ? (InstrumentClip*)activeClip : nullptr;
@@ -1168,6 +1168,14 @@ void Kit::doTopoTick(ModelStack* modelStack, int32_t currentPos) {
 	};
 
 	bool restart = (clip != topoClip_) || (topoLastPos_ < 0);
+	if (restart) {
+		// The caller passes an absolute monotonic tick; anchor it so the pattern runs in phase with the clip.
+		topoLaunchTick_ = currentPos;
+		currentPos = 0;
+	}
+	else {
+		currentPos -= topoLaunchTick_;
+	}
 	int64_t fromPulse = restart ? 0 : pulseAt(topoLastPos_);
 	int64_t toPulse = pulseAt(currentPos);
 	if (toPulse < fromPulse) { // Clip looped back or was seeked backwards - restart the pattern
@@ -1288,8 +1296,9 @@ int32_t Kit::doTickForwardForArp(ModelStack* modelStack, int32_t currentPos) {
 		return 2147483647;
 	}
 
-	// Community Firmware: Topo Drums generative drum mode
-	doTopoTick(modelStack, currentPos);
+	// Community Firmware: Topo Drums generative drum mode is driven from AudioEngine::routine()
+	// (every audio block) rather than from here, since the arp loop that calls this only runs when some
+	// output has scheduled a swung-tick event.
 
 	bool clipIsActive = modelStack->song->isClipActive(activeClip);
 
@@ -1313,6 +1322,11 @@ int32_t Kit::doTickForwardForArp(ModelStack* modelStack, int32_t currentPos) {
 	ArpReturnInstruction kitInstruction;
 	int32_t ticksTilNextKitArpEvent =
 	    arpeggiator.doTickForward(arpSettings, &kitInstruction, currentPos, activeClip->currentlyPlayingReversed);
+	static uint32_t topoDbgKitArp = 0;
+	if ((topoDbgKitArp++ & 0xFF) == 0) {
+		D_PRINTLN("TOPO kitarp: kitRet=%ld rows=%ld", (long int)ticksTilNextKitArpEvent,
+		          (long int)((InstrumentClip*)activeClip)->noteRows.getNumElements());
+	}
 
 	if (kitInstruction.glideNoteCodeOffPostArp[0] != ARP_NOTE_NONE) {
 		// Glide note off
@@ -1435,6 +1449,12 @@ int32_t Kit::doTickForwardForArp(ModelStack* modelStack, int32_t currentPos) {
 			}
 
 			ticksTilNextArpEvent = std::min(ticksTilNextArpEvent, ticksTilNextArpEventThisDrum);
+			if (ticksTilNextArpEventThisDrum < 2147483647) {
+				static uint32_t topoDbgDrumArp = 0;
+				if ((topoDbgDrumArp++ & 0xFF) == 0) {
+					D_PRINTLN("TOPO drumarp: row=%ld ret=%ld", (long int)i, (long int)ticksTilNextArpEventThisDrum);
+				}
+			}
 		}
 	}
 

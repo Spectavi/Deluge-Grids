@@ -189,14 +189,19 @@ private:
 	ArpeggiatorSettings* getArpSettings(InstrumentClip* clip = nullptr);
 	void renderNonAudioArpPostOutput(std::span<StereoSample> output);
 
-	// Community Firmware: Topo Drums generative drum mode
-	void doTopoTick(ModelStack* modelStack, int32_t currentPos);
+	// Community Firmware: Topo Drums generative drum mode. Called from AudioEngine::routine()
+	// on every audio block, so it must be public.
+public:
+	void doTopoTick(ModelStack* modelStack, int64_t currentPos);
+
+private:
 	void fireTopoBank(class InstrumentClip* clip, ModelStackWithTimelineCounter* timelineStack, int32_t rowIndex,
 	                  uint8_t velocity);
 	void silenceTopoBank(class InstrumentClip* clip, ModelStackWithTimelineCounter* timelineStack, int32_t rowIndex);
 
 	deluge::model::topo::TopoEngine topoEngine_;
 	class InstrumentClip* topoClip_{nullptr}; ///< Clip the topo engine is currently following
+	int64_t topoLaunchTick_{0};               ///< Absolute swung tick at which the engine started following the clip
 	int32_t topoLastPos_{-1};                 ///< Last clip position seen by the topo tick (-1 = restart)
 	int64_t topoGateOffPulse_[deluge::model::topo::kNumBanks]{-1, -1, -1}; ///< Pattern-relative pulse at which each
 	                                                                       ///< bank's gate closes (-1 = none)
