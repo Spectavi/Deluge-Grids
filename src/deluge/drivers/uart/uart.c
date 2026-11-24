@@ -18,6 +18,7 @@
 #include "drivers/uart/uart.h"
 #include "RZA1/oled/oled_low_level.h"
 #include "RZA1/system/iodefines/dmac_iodefine.h"
+#include "RZA1/uart/sio_char.h" // for bufferMIDIUart in the !HAVE_RTT debug-print path
 #include "definitions.h"
 #include "drivers/dmac/dmac.h"
 #include "drivers/uart/rx_buffer.h"
