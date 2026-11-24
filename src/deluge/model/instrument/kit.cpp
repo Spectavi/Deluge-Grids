@@ -1252,9 +1252,12 @@ void Kit::fireTopoBank(InstrumentClip* clip, ModelStackWithTimelineCounter* time
 		drum->noteOn(threeMainThings, velocity, kNeutralMpe);
 	}
 	else {
+		// MIDI drums send this argument verbatim as the MIDI note code, so it must be the drum's own note -
+		// not the note-row index. Gate drums ignore it.
+		int32_t const noteCode = (drum->type == DrumType::MIDI) ? ((MIDIDrum*)drum)->note : rowIndex;
 		ArpNote arpNote;
 		arpNote.velocity = velocity;
-		((NonAudioDrum*)drum)->noteOnPostArp(rowIndex, &arpNote, 0);
+		((NonAudioDrum*)drum)->noteOnPostArp(noteCode, &arpNote, 0);
 	}
 }
 
@@ -1274,7 +1277,8 @@ void Kit::silenceTopoBank(InstrumentClip* clip, ModelStackWithTimelineCounter* t
 		drum->noteOff(threeMainThings);
 	}
 	else {
-		((NonAudioDrum*)drum)->noteOffPostArp(rowIndex);
+		int32_t const noteCode = (drum->type == DrumType::MIDI) ? ((MIDIDrum*)drum)->note : rowIndex;
+		((NonAudioDrum*)drum)->noteOffPostArp(noteCode);
 	}
 }
 
