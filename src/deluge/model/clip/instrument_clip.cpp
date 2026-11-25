@@ -154,8 +154,10 @@ void InstrumentClip::copyBasicsFrom(Clip const* otherClip) {
 }
 
 // Community Firmware: Topo Drums. Makes sure every engine bank has a lane (note row with a
-// drum), reusing existing GateDrum rows where possible and otherwise creating GateDrums on
-// the first free gate channels (skipping ones set to SPECIAL, i.e. used as RUN / CLOCK).
+// drum). Prefers lanes that already make a sound - audio (sample) drums first, then MIDI
+// drums - so enabling Topo on a normal kit plays the kit's own sounds. Only kits with no
+// sound rows fall back to reusing existing GateDrum rows or creating GateDrums on free gate
+// channels (skipping ones set to SPECIAL, i.e. used as RUN / CLOCK).
 // Returns false if some banks could not be assigned a lane.
 bool InstrumentClip::ensureTopoLanes(ModelStackWithTimelineCounter* modelStack) {
 	using namespace deluge::model::topo;
@@ -185,7 +187,38 @@ bool InstrumentClip::ensureTopoLanes(ModelStackWithTimelineCounter* modelStack) 
 		}
 		topoDrumsSettings.bankRows[b] = -1;
 
-		// 1) Try to reuse an existing row with a GateDrum on a not-yet-used channel.
+		// A row already driven by another bank is off limits, so the banks spread over
+		// separate lanes instead of all landing on the same one.
+		auto claimedByOtherBank = [this, b](int32_t candidate) -> bool {
+			for (int32_t b2 = 0; b2 < kNumBanks; b2++) {
+				if (b2 != b && topoDrumsSettings.bankRows[b2] == candidate) {
+					return true;
+				}
+			}
+			return false;
+		};
+
+		// 1) Prefer a lane with an audio (sample) drum, then a MIDI drum: these are the
+		//    rows the kit actually makes sound from (internally, or on external gear).
+		for (DrumType wanted : {DrumType::SOUND, DrumType::MIDI}) {
+			for (int32_t i = 0; i < noteRows.getNumElements() && topoDrumsSettings.bankRows[b] < 0; i++) {
+				if (claimedByOtherBank(i)) {
+					continue;
+				}
+				Drum* drum = noteRows.getElement(i)->drum;
+				if (drum && drum->type == wanted) {
+					topoDrumsSettings.bankRows[b] = (int8_t)i;
+				}
+			}
+			if (topoDrumsSettings.bankRows[b] >= 0) {
+				break;
+			}
+		}
+		if (topoDrumsSettings.bankRows[b] >= 0) {
+			continue;
+		}
+
+		// 2) Try to reuse an existing row with a GateDrum on a not-yet-used channel.
 		for (int32_t i = 0; i < noteRows.getNumElements(); i++) {
 			Drum* drum = noteRows.getElement(i)->drum;
 			if (drum && drum->type == DrumType::GATE && !channelUsed[((GateDrum*)drum)->channel]) {
@@ -198,7 +231,7 @@ bool InstrumentClip::ensureTopoLanes(ModelStackWithTimelineCounter* modelStack) 
 			continue;
 		}
 
-		// 2) Find a free gate channel which isn't set to SPECIAL, get (or make) its GateDrum,
+		// 3) Find a free gate channel which isn't set to SPECIAL, get (or make) its GateDrum,
 		//    and put it on a new NoteRow.
 		for (int32_t channel = 0; channel < NUM_GATE_CHANNELS; channel++) {
 			if (channelUsed[channel] || cvEngine.gateChannels[channel].mode == GateType::SPECIAL) {
@@ -232,6 +265,19 @@ bool InstrumentClip::ensureTopoLanes(ModelStackWithTimelineCounter* modelStack) 
 		if (topoDrumsSettings.bankRows[b] < 0) {
 			allAssigned = false;
 		}
+	}
+
+	{
+		int32_t types[kNumBanks];
+		for (int32_t b = 0; b < kNumBanks; b++) {
+			int32_t r = topoDrumsSettings.bankRows[b];
+			types[b] = (r >= 0 && r < noteRows.getNumElements() && noteRows.getElement(r)->drum)
+			               ? (int32_t)noteRows.getElement(r)->drum->type
+			               : -1;
+		}
+		D_PRINTLN("TOPO lanes: rows=%ld/%ld/%ld types=%ld/%ld/%ld num=%ld", (long int)topoDrumsSettings.bankRows[0],
+		          (long int)topoDrumsSettings.bankRows[1], (long int)topoDrumsSettings.bankRows[2], (long int)types[0],
+		          (long int)types[1], (long int)types[2], (long int)noteRows.getNumElements());
 	}
 	return allAssigned;
 }
