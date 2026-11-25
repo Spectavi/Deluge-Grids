@@ -1188,20 +1188,30 @@ void Kit::doTopoTick(ModelStack* modelStack, int64_t currentPos) {
 		for (auto& off : topoGateOffPulse_) {
 			off = -1;
 		}
+	}
+	topoClip_ = clip;
+	topoLastPos_ = currentPos;
+
+	// Community Firmware: dial changes take effect on loop boundaries only. The clip's settings are
+	// snapshotted into the engine at restart and at each loop wrap (pulseAt() maps one loop to
+	// exactly kPulsesPerPattern pulses), so the pattern - and the pad overlay drawn from it - is
+	// fixed for the whole loop that's playing, and changes land cleanly when it loops.
+	bool const loopWrapped = (fromPulse / kPulsesPerPattern) != (toPulse / kPulsesPerPattern);
+	auto const& topoSettings = clip->topoDrumsSettings;
+	if (restart || loopWrapped) {
+		topoEngine_.settings() = topoSettings.engine;
+		topoEngine_.setMode(topoSettings.mode);
+		topoEngine_.setGateMode(topoSettings.gateMode);
+		topoEngine_.setSwing(topoSettings.swing);
+		D_PRINTLN("TOPO apply: d=%ld/%ld/%ld x=%ld y=%ld rnd=%ld loop=%ld", (long int)topoSettings.engine.density[0],
+		          (long int)topoSettings.engine.density[1], (long int)topoSettings.engine.density[2],
+		          (long int)topoSettings.engine.x, (long int)topoSettings.engine.y,
+		          (long int)topoSettings.engine.randomness, (long int)(toPulse / kPulsesPerPattern));
 		// Community Firmware: the pad overlay should refresh to show the new loop's pattern
 		if (getRootUI()) {
 			getRootUI()->clipNeedsReRendering(clip);
 		}
 	}
-	topoClip_ = clip;
-	topoLastPos_ = currentPos;
-
-	// Push the latest settings into the engine every tick - it's only a handful of bytes.
-	auto const& topoSettings = clip->topoDrumsSettings;
-	topoEngine_.settings() = topoSettings.engine;
-	topoEngine_.setMode(topoSettings.mode);
-	topoEngine_.setGateMode(topoSettings.gateMode);
-	topoEngine_.setSwing(topoSettings.swing);
 
 	// Close any gates / triggers which have reached their end.
 	for (int32_t b = 0; b < kNumBanks; b++) {
@@ -1235,7 +1245,7 @@ void Kit::doTopoTick(ModelStack* modelStack, int64_t currentPos) {
 		D_PRINTLN("TOPO fire: bank=%ld row=%ld acc=%d", (long int)b, (long int)topoSettings.bankRows[b],
 		          event.accented(b) ? 1 : 0);
 		fireTopoBank(clip, timelineStack, topoSettings.bankRows[b], event.accented(b) ? 127 : 100);
-		int64_t gatePulses = topoSettings.gateMode ? (int64_t)kPulsesPerStep : 1;
+		int64_t gatePulses = topoEngine_.gateMode() ? (int64_t)kPulsesPerStep : 1;
 		topoGateOffPulse_[b] = toPulse + gatePulses;
 	}
 }
