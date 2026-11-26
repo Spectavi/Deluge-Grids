@@ -7664,6 +7664,12 @@ void InstrumentClipView::renderTopoPatternOverlay(uint32_t whichRows, RGB image[
 			continue;
 		}
 
+		// Community Firmware: a muted lane draws its Topo pattern in the same dimmed
+		// colour the firmware uses for muted notes (the engine also skips firing there).
+		NoteRow* const overlayRow = modelStackWithNoteRow->getNoteRowAllowNull();
+		bool const rowIsMuted = overlayRow && overlayRow->muted;
+		RGB const baseColour = rowIsMuted ? menu_item::mutedColourMenu.getRGB() : rowColour[yDisplay];
+
 		RGB* rowImage = image[yDisplay];
 		for (int32_t x = 0; x < kDisplayWidth; x++) {
 			int32_t pos = getPosFromSquare(x, xScroll, xZoom);
@@ -7674,8 +7680,7 @@ void InstrumentClipView::renderTopoPatternOverlay(uint32_t whichRows, RGB image[
 			}
 			RGB& pixel = rowImage[x];
 			if (pixel == colours::black) {
-				pixel = engine.accentAt(step, bank) ? rowColour[yDisplay]
-				                                    : rowColour[yDisplay].adjustFractional(140 << 8, 255 << 8);
+				pixel = engine.accentAt(step, bank) ? baseColour : baseColour.adjustFractional(140 << 8, 255 << 8);
 			}
 		}
 	}

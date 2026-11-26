@@ -1242,9 +1242,18 @@ void Kit::doTopoTick(ModelStack* modelStack, int64_t currentPos) {
 		if (!event.fired(b)) {
 			continue;
 		}
+		// Community Firmware: a row mute silences the whole lane, Topo's own hits included -
+		// skip the fire (and don't arm a gate) while the lane is muted.
+		int32_t const rowIndex = topoSettings.bankRows[b];
+		NoteRow* row = (rowIndex >= 0 && rowIndex < clip->noteRows.getNumElements())
+		                   ? clip->noteRows.getElement(rowIndex)
+		                   : nullptr;
+		if (!row || row->muted) {
+			continue;
+		}
 		D_PRINTLN("TOPO fire: bank=%ld row=%ld acc=%d", (long int)b, (long int)topoSettings.bankRows[b],
 		          event.accented(b) ? 1 : 0);
-		fireTopoBank(clip, timelineStack, topoSettings.bankRows[b], event.accented(b) ? 127 : 100);
+		fireTopoBank(clip, timelineStack, rowIndex, event.accented(b) ? 127 : 100);
 		int64_t gatePulses = topoEngine_.gateMode() ? (int64_t)kPulsesPerStep : 1;
 		topoGateOffPulse_[b] = toPulse + gatePulses;
 	}
